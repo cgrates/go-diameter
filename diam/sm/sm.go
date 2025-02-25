@@ -6,6 +6,8 @@ package sm
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/fiorix/go-diameter/v4/diam"
 	"github.com/fiorix/go-diameter/v4/diam/datatype"
@@ -21,30 +23,77 @@ type SupportedApp struct {
 }
 
 // PrepareSupportedApps prepares a list of locally supported apps
-func PrepareSupportedApps(d *dict.Parser) []*SupportedApp {
-	locallySupportedApps := []*SupportedApp{}
-	for _, app := range d.Apps() {
+func PrepareSupportedApps(d *dict.Parser, supportedApps []string) []*SupportedApp {
+	locallySupportedApps := make([]*SupportedApp, 0)
+	dictApps := d.Apps()      // dictionary applications
+	if supportedApps != nil { // use only selected apps from dictionaries
+		for _, appStr := range supportedApps {
+			parts := strings.Split(appStr, ".")
+			var vendor, appPart string
+			if len(parts) > 1 {
+				vendor, appPart = parts[0], parts[1]
+			} else {
+				appPart = parts[0]
+			}
+			foundAppIdx := -1 // application index that matches in the dictionary
+			for i, dictApp := range dictApps {
+				// if app ID or Name is found in dictionary, store the index of that app
+				if appID, err := strconv.Atoi(appPart); err != nil && appPart == dictApp.Name || appID != 0 && appID == int(dictApp.ID) {
+					if foundAppIdx == -1 {
+						foundAppIdx = i // if no vendors found, pick first app that matched
+					}
+					if vendor == "" {
+						break
+					}
+					foundVendor := false
+					for _, dictVendor := range dictApp.Vendor {
+						if dictVendor.Name == vendor {
+							foundAppIdx = i
+							foundVendor = true
+							break
+						}
+					}
+					if foundVendor {
+						break
+					}
+				}
+			}
+			if foundAppIdx != -1 { // continue to next iteration if app not found in dictionary
+				locallySupportedApps = append(locallySupportedApps, createSupportedApp(dictApps[foundAppIdx]))
+			}
+		}
+		return locallySupportedApps
+	}
+	// If no supportedApps provided, include all apps
+	for _, app := range dictApps {
 		if app.ID == 0 {
 			continue
 		}
-		addApp := new(SupportedApp)
-		addApp.ID = app.ID
-		addApp.AppType = app.Type
-		for _, vendor := range app.Vendor {
-			addApp.Vendor = vendor.ID
-		}
-		locallySupportedApps = append(locallySupportedApps, addApp)
+		locallySupportedApps = append(locallySupportedApps, createSupportedApp(app))
 	}
 	return locallySupportedApps
+}
+
+// createSupportedApp creates SupportedApp out of dict.App
+func createSupportedApp(app *dict.App) *SupportedApp {
+	supportedApp := &SupportedApp{
+		ID:      app.ID,
+		AppType: app.Type,
+	}
+	if len(app.Vendor) > 0 {
+		supportedApp.Vendor = app.Vendor[0].ID
+	}
+	return supportedApp
 }
 
 // Settings used to configure the state machine with AVPs to be added
 // to CER on clients or CEA on servers.
 type Settings struct {
-	OriginHost  datatype.DiameterIdentity
-	OriginRealm datatype.DiameterIdentity
-	VendorID    datatype.Unsigned32
-	ProductName datatype.UTF8String
+	SupportedApps []string
+	OriginHost    datatype.DiameterIdentity
+	OriginRealm   datatype.DiameterIdentity
+	VendorID      datatype.Unsigned32
+	ProductName   datatype.UTF8String
 
 	// OriginStateID is optional for clients, and not added if unset.
 	//
@@ -97,7 +146,7 @@ func New(settings *Settings) *StateMachine {
 		cfg:           settings,
 		mux:           diam.NewServeMux(),
 		hsNotifyc:     make(chan diam.Conn),
-		supportedApps: PrepareSupportedApps(dict.Default),
+		supportedApps: PrepareSupportedApps(dict.Default, settings.SupportedApps),
 	}
 	sm.mux.Handle("CER", handleCER(sm))
 	sm.mux.Handle("DWR", handshakeOK(handleDWR(sm)))
