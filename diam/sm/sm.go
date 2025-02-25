@@ -6,6 +6,8 @@ package sm
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/fiorix/go-diameter/v4/diam"
 	"github.com/fiorix/go-diameter/v4/diam/datatype"
@@ -20,31 +22,95 @@ type SupportedApp struct {
 	Vendor  uint32
 }
 
+// converted supportedApps used to be compared with SupportedApp struct
+type pseudoSupportedApp struct {
+	id            *uint32
+	name          *string
+	vendorName    *string
+	firstIdxFound int // if pseudo app has a vendor but the vendor isnt found in any app, hold the index of the first app that matched with its pseudo app id/name
+}
+
+// converts supportedApps slice to pseudoSupportedApp slice
+func toPseudoSupportedApps(supportedApps []string) []*pseudoSupportedApp {
+	pseudoApps := make([]*pseudoSupportedApp, len(supportedApps))
+	for i, appStr := range supportedApps {
+		parts := strings.Split(appStr, ".")
+		var vendor, appNameID *string
+		if len(parts) > 1 {
+			vendor, appNameID = &parts[0], &parts[1]
+		} else {
+			appNameID = &parts[0]
+		}
+		id, _ := strconv.Atoi(*appNameID)
+		idUint := uint32(id)
+		pseudoApps[i] = &pseudoSupportedApp{
+			id:            &idUint,
+			name:          appNameID,
+			vendorName:    vendor,
+			firstIdxFound: -1,
+		}
+	}
+	return pseudoApps
+}
+
 // PrepareSupportedApps prepares a list of locally supported apps
-func PrepareSupportedApps(d *dict.Parser) []*SupportedApp {
-	locallySupportedApps := []*SupportedApp{}
-	for _, app := range d.Apps() {
+func PrepareSupportedApps(d *dict.Parser, supportedApps []string) []*SupportedApp {
+	locallySupportedApps := make([]*SupportedApp, 0)
+	pseudoApps := toPseudoSupportedApps(supportedApps) // supportedApps made compareable
+	dApps := d.Apps()                                  // list of dictionary apps
+	for idx, app := range dApps {
 		if app.ID == 0 {
 			continue
 		}
-		addApp := new(SupportedApp)
-		addApp.ID = app.ID
-		addApp.AppType = app.Type
-		for _, vendor := range app.Vendor {
-			addApp.Vendor = vendor.ID
+		if supportedApps == nil {
+			locallySupportedApps = append(locallySupportedApps, createSupportedApp(app))
 		}
-		locallySupportedApps = append(locallySupportedApps, addApp)
+		for _, pApp := range pseudoApps {
+			if !((pApp.id != nil && app.ID == *pApp.id) ||
+				(pApp.name != nil && app.Name == *pApp.name)) {
+				continue // confinue if id/name not matching the app
+			}
+			if pApp.vendorName != nil && (len(app.Vendor) == 0 || app.Vendor[0].Name != *pApp.vendorName) {
+				if pApp.firstIdxFound == -1 {
+					pApp.firstIdxFound = idx
+				}
+				continue // continue until app with proper vendor is found
+			}
+			locallySupportedApps = append(locallySupportedApps, createSupportedApp(app))
+			pApp.firstIdxFound = -1
+			break
+		}
+	}
+
+	// if pseudoApp had a vendor and it wasnt found in any app, append the first app that was matching
+	for _, pApp := range pseudoApps {
+		if pApp.firstIdxFound != -1 { // -1 indicates it its already appended or app id/name didnt match any app
+			locallySupportedApps = append(locallySupportedApps, createSupportedApp(dApps[pApp.firstIdxFound]))
+		}
 	}
 	return locallySupportedApps
+}
+
+// createSupportedApp creates SupportedApp out of dict.App
+func createSupportedApp(app *dict.App) *SupportedApp {
+	supportedApp := &SupportedApp{
+		ID:      app.ID,
+		AppType: app.Type,
+	}
+	if len(app.Vendor) > 0 {
+		supportedApp.Vendor = app.Vendor[0].ID
+	}
+	return supportedApp
 }
 
 // Settings used to configure the state machine with AVPs to be added
 // to CER on clients or CEA on servers.
 type Settings struct {
-	OriginHost  datatype.DiameterIdentity
-	OriginRealm datatype.DiameterIdentity
-	VendorID    datatype.Unsigned32
-	ProductName datatype.UTF8String
+	SupportedApps []string
+	OriginHost    datatype.DiameterIdentity
+	OriginRealm   datatype.DiameterIdentity
+	VendorID      datatype.Unsigned32
+	ProductName   datatype.UTF8String
 
 	// OriginStateID is optional for clients, and not added if unset.
 	//
@@ -97,7 +163,7 @@ func New(settings *Settings) *StateMachine {
 		cfg:           settings,
 		mux:           diam.NewServeMux(),
 		hsNotifyc:     make(chan diam.Conn),
-		supportedApps: PrepareSupportedApps(dict.Default),
+		supportedApps: PrepareSupportedApps(dict.Default, settings.SupportedApps),
 	}
 	sm.mux.Handle("CER", handleCER(sm))
 	sm.mux.Handle("DWR", handshakeOK(handleDWR(sm)))
