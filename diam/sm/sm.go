@@ -6,6 +6,8 @@ package sm
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/fiorix/go-diameter/v4/diam"
 	"github.com/fiorix/go-diameter/v4/diam/datatype"
@@ -20,11 +22,46 @@ type SupportedApp struct {
 	Vendor  uint32
 }
 
+// converts supportedApps slice to map with keys being either the ID or Name; and value being vendorName
+func computeAppFilters(supportedApps []string) map[string]string {
+	if supportedApps == nil {
+		return nil
+	}
+	filterApps := make(map[string]string, len(supportedApps))
+	for _, appStr := range supportedApps {
+		parts := strings.Split(appStr, ".")
+		if len(parts) > 1 {
+			filterApps[parts[1]] = parts[0]
+		} else {
+			filterApps[parts[0]] = ""
+		}
+	}
+	return filterApps
+}
+
+// decides weather to append the current dict.App into supported apps or not
+func appAllowedByFilters(app *dict.App, appFilters map[string]string) bool {
+	if appFilters == nil {
+		return true
+	}
+	for idName, fVendor := range appFilters {
+		if !(strconv.Itoa(int(app.ID)) == idName || app.Name == idName) {
+			continue // continue if id/name not matching the app
+		}
+		if fVendor != "" && (len(app.Vendor) == 0 || app.Vendor[0].Name != fVendor) {
+			continue // continue if filter has vendor and doesn't match app vendor
+		}
+		return true // return true if all conditions are satisfied
+	}
+	return false // return false if no conditions match
+}
+
 // PrepareSupportedApps prepares a list of locally supported apps
-func PrepareSupportedApps(d *dict.Parser) []*SupportedApp {
+func PrepareSupportedApps(d *dict.Parser, supportedApps []string) []*SupportedApp {
 	locallySupportedApps := []*SupportedApp{}
+	appFilters := computeAppFilters(supportedApps)
 	for _, app := range d.Apps() {
-		if app.ID == 0 {
+		if app.ID == 0 || !appAllowedByFilters(app, appFilters) {
 			continue
 		}
 		addApp := new(SupportedApp)
@@ -41,10 +78,11 @@ func PrepareSupportedApps(d *dict.Parser) []*SupportedApp {
 // Settings used to configure the state machine with AVPs to be added
 // to CER on clients or CEA on servers.
 type Settings struct {
-	OriginHost  datatype.DiameterIdentity
-	OriginRealm datatype.DiameterIdentity
-	VendorID    datatype.Unsigned32
-	ProductName datatype.UTF8String
+	SupportedApps []string
+	OriginHost    datatype.DiameterIdentity
+	OriginRealm   datatype.DiameterIdentity
+	VendorID      datatype.Unsigned32
+	ProductName   datatype.UTF8String
 
 	// OriginStateID is optional for clients, and not added if unset.
 	//
@@ -97,7 +135,7 @@ func New(settings *Settings) *StateMachine {
 		cfg:           settings,
 		mux:           diam.NewServeMux(),
 		hsNotifyc:     make(chan diam.Conn),
-		supportedApps: PrepareSupportedApps(dict.Default),
+		supportedApps: PrepareSupportedApps(dict.Default, settings.SupportedApps),
 	}
 	sm.mux.Handle("CER", handleCER(sm))
 	sm.mux.Handle("DWR", handshakeOK(handleDWR(sm)))

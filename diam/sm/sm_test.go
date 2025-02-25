@@ -5,6 +5,7 @@
 package sm
 
 import (
+	"reflect"
 	"testing"
 	"time"
 
@@ -33,7 +34,7 @@ func TestStateMachineTCP(t *testing.T) {
 	testStateMachine(t, "tcp")
 }
 
-/// TestStateMachine establishes a connection with a test server and
+// TestStateMachine establishes a connection with a test server and
 // sends a Re-Auth-Request message to ensure the handshake was
 // completed and that the RAR handler has context from the peer.
 func testStateMachine(t *testing.T, network string) {
@@ -147,5 +148,78 @@ func testStateMachine(t *testing.T, network string) {
 		t.Fatal(err)
 	case <-time.After(time.Second):
 		t.Fatal("No DWR message received")
+	}
+}
+
+func TestPrepareSupportedAppsWithSuppApps1(t *testing.T) {
+	expLst := []*SupportedApp{
+		{ID: 4, AppType: "auth", Vendor: 0},
+		{ID: 1, AppType: "auth", Vendor: 0},
+		{ID: 16777251, AppType: "auth", Vendor: 10415},
+	}
+	rcvLst := PrepareSupportedApps(dict.Default, []string{"Charging Control", "1",
+		"TGPP.TGPP S6A"})
+	if len(expLst) != len(rcvLst) {
+		t.Errorf("expected length <%v>, received <%v>", len(expLst), len(rcvLst))
+	}
+	for i := range rcvLst {
+		if !reflect.DeepEqual(expLst[i], rcvLst[i]) {
+			t.Errorf("Expected <%v>\nReceived <%v>", expLst[i], rcvLst[i])
+		}
+	}
+}
+
+func TestPrepareSupportedAppsNil(t *testing.T) {
+	var testDicts = []string{
+		"../dict/testdata/base.xml",
+		"../dict/testdata/credit_control.xml",
+		"../dict/testdata/network_access_server.xml",
+		"../dict/testdata/tgpp_ro_rf.xml",
+		"../dict/testdata/tgpp_s6a.xml",
+		"../dict/testdata/tgpp_swx.xml"}
+	parser, err := dict.NewParser(testDicts...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expLst := []*SupportedApp{
+		{ID: 3, AppType: "acct", Vendor: 0},
+		{ID: 4, AppType: "auth", Vendor: 0},
+		{ID: 1, AppType: "auth", Vendor: 0},
+		{ID: 4, AppType: "auth", Vendor: 10415},
+		{ID: 16777251, AppType: "auth", Vendor: 10415},
+		{ID: 16777265, AppType: "auth", Vendor: 10415},
+	}
+	rcvLst := PrepareSupportedApps(parser, nil)
+	if len(expLst) != len(rcvLst) {
+		t.Errorf("expected length <%v>, received <%v>", len(expLst), len(rcvLst))
+	}
+	for i := range rcvLst {
+		if !reflect.DeepEqual(expLst[i], rcvLst[i]) {
+			t.Errorf("Expected <%v>\nReceived <%v>", expLst[i], rcvLst[i])
+		}
+	}
+}
+
+func TestPrepareSupportedAppsWithSuppAppsNoVendorFound(t *testing.T) {
+	expLst := []*SupportedApp{
+		{ID: 1, AppType: "auth", Vendor: 0},
+		{ID: 4, AppType: "auth", Vendor: 10415},
+	}
+	rcvLst := PrepareSupportedApps(dict.Default, []string{"TGPP.TGPP", "1",
+		"NonExistentVendor.4"})
+	if len(expLst) != len(rcvLst) {
+		t.Errorf("expected length <%v>, received <%v>", len(expLst), len(rcvLst))
+	}
+	for i := range rcvLst {
+		if !reflect.DeepEqual(expLst[i], rcvLst[i]) {
+			t.Errorf("Expected <%v>\nReceived <%v>", expLst[i], rcvLst[i])
+		}
+	}
+}
+
+func TestPrepareSupportedAppsWithSuppAppsEmptySuppApps(t *testing.T) {
+	rcvLst := PrepareSupportedApps(dict.Default, []string{})
+	if len(rcvLst) != 0 {
+		t.Errorf("expected length <%v>, received <%v>", 0, len(rcvLst))
 	}
 }
