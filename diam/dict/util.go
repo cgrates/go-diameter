@@ -128,11 +128,15 @@ retry:
 			triedBase = true
 		}
 		goto retry
-	}
+	} else {
+		if codeU32, isUint32 := code.(uint32); isUint32 {
+			avp, err = p.FindAVP(origAppID, codeU32)
+			if err != nil {
+				return MakeUnknownAVP(origAppID, codeU32, vendorID), err
+			}
 
-	// All dictionaries exhausted - return unknown AVP and error
-	if codeU32, isUint32 := code.(uint32); isUint32 {
-		return MakeUnknownAVP(origAppID, codeU32, vendorID), err
+			return avp, nil
+		}
 	}
 
 	return nil, err
