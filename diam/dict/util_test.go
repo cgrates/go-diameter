@@ -6,6 +6,7 @@ package dict
 
 import (
 	"bytes"
+	"reflect"
 	"testing"
 )
 
@@ -99,6 +100,26 @@ func TestFindAVPWithVendor(t *testing.T) {
 	findAVPCodeTest(t, 1, "User-Password", UndefinedVendorID, 2)
 	findAVPCodeTest(t, 4, "User-Password", UndefinedVendorID, 2)
 	findAVPCodeTest(t, 16777251, "User-Password", UndefinedVendorID, 2)
+}
+
+func TestFindAVPUnknownAVPErr(t *testing.T) {
+	var nokiaXML = `<?xml version="1.0" encoding="UTF-8"?>
+<diameter>
+  <application id="43">
+    <vendor id="94" name="Nokia" />
+    <avp name="Session-Start-Indicator" code="5105" must="V" may="P,M" must-not="-" may-encrypt="N" vendor-id="94">
+      <data type="UTF8String" />
+    </avp>
+  </application>
+</diameter>`
+	Default.Load(bytes.NewReader([]byte(nokiaXML)))
+	expAVP := MakeUnknownAVP(555, uint32(555), UndefinedVendorID)
+	if avp, err := Default.FindAVPWithVendor(555, uint32(555), UndefinedVendorID); err == nil || err.Error() != "Could not find AVP uint32(555) for Vendor: 4294967295" {
+		t.Errorf("expected err <%v>, received <%v>", "Could not find AVP uint32(555) for Vendor: 4294967295", err)
+	} else if !reflect.DeepEqual(avp, expAVP) {
+		t.Errorf("expected avp <%+v>, received <%+v>", expAVP, avp)
+	}
+
 }
 
 func TestFindAVP(t *testing.T) {
