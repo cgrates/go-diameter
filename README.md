@@ -10,6 +10,11 @@ implementation of the
 Diameter Base Protocol [RFC 6733](http://tools.ietf.org/html/rfc6733)
 and a stack for the [Go programming language](https://go.dev/).
 
+### Deviations from fiorix/go-diameter
+
+- Modify PrepareSupportedApps to ignore specified applications
+- Revise FindAVPWithVendor to stop looping endlessly
+
 ### Status
 
 The current implementation is solid and works fine for general purpose
