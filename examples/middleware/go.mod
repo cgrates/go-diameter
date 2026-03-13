@@ -1,6 +1,6 @@
 module github.com/cgrates/go-diameter/examples/middleware
 
-go 1.24.0
+go 1.25.0
 
 require (
 	github.com/cgrates/go-diameter v0.0.0-20250228095954-21f7f15e2034
