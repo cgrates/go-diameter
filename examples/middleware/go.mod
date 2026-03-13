@@ -7,4 +7,4 @@ require (
 	github.com/opentracing/opentracing-go v1.2.0
 )
 
-require github.com/ishidawataru/sctp v0.0.0-20230406120618-7ff4192f6ff2 // indirect
+require github.com/ishidawataru/sctp v0.0.0-20251114114122-19ddcbc6aae2 // indirect
