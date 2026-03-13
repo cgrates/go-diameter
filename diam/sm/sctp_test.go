@@ -9,7 +9,7 @@ package sm
 import (
 	"testing"
 
-	"github.com/fiorix/go-diameter/v4/diam"
+	"github.com/cgrates/go-diameter/diam"
 )
 
 func requireSCTP(t *testing.T) {
