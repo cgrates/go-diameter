@@ -204,6 +204,9 @@ func (c *conn) serve() {
 		c.tlsState = &tls.ConnectionState{}
 		*c.tlsState = tlsConn.ConnectionState()
 	}
+	if cb := c.server.OnNewConnection; cb != nil {
+		cb(c.writer)
+	}
 	for {
 		m, err := c.readMessage()
 		if err != nil {
@@ -647,6 +650,87 @@ type Server struct {
 	// Handlers that mutate shared per-connection state must synchronize
 	// themselves.
 	MaxConcurrentHandlers int
+
+	// OnNewConnection, if non-nil, is invoked once per accepted connection
+	// after the transport is fully established (TLS handshake complete, if
+	// applicable) and before the read loop starts. It runs in the
+	// connection's serve goroutine, so long-running work will delay message
+	// processing on that connection. Type-assert to CloseNotifier to detect
+	// disconnection:
+	//
+	//	srv.OnNewConnection = func(c diam.Conn) {
+	//		log.Printf("up: %s", c.RemoteAddr())
+	//		go func() {
+	//			<-c.(diam.CloseNotifier).CloseNotify()
+	//			log.Printf("down: %s", c.RemoteAddr())
+	//		}()
+	//	}
+	OnNewConnection func(Conn)
+
+	mu        sync.Mutex
+	listeners map[net.Listener]struct{}
+	closed    bool
+}
+
+// ErrServerClosed is returned by Server.Serve and Server.ListenAndServe(TLS)
+// after a call to Server.Close.
+var ErrServerClosed = fmt.Errorf("diam: Server closed")
+
+// Close immediately closes all listeners registered with the server. It does
+// not affect already-accepted connections or in-flight handlers; those
+// continue to run until their read loop exits naturally or their underlying
+// connection is closed by the peer. After Close, Server.Serve returns
+// ErrServerClosed and no new connections are accepted.
+func (srv *Server) Close() error {
+	srv.mu.Lock()
+	defer srv.mu.Unlock()
+	srv.closed = true
+	var firstErr error
+	for l := range srv.listeners {
+		if err := l.Close(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	srv.listeners = nil
+	return firstErr
+}
+
+func (srv *Server) trackListener(l net.Listener, add bool) bool {
+	srv.mu.Lock()
+	defer srv.mu.Unlock()
+	if add {
+		if srv.closed {
+			return false
+		}
+		if srv.listeners == nil {
+			srv.listeners = make(map[net.Listener]struct{})
+		}
+		srv.listeners[l] = struct{}{}
+		return true
+	}
+	delete(srv.listeners, l)
+	return true
+}
+
+func (srv *Server) isClosed() bool {
+	srv.mu.Lock()
+	defer srv.mu.Unlock()
+	return srv.closed
+}
+
+// onceCloseListener wraps a net.Listener so that Close is idempotent.
+// Used internally by ListenAndServe(TLS) so the defer l.Close() and
+// Server.Close do not both close the underlying listener, which triggers
+// file-descriptor reuse races on SCTP (see 29cbaef).
+type onceCloseListener struct {
+	net.Listener
+	once     sync.Once
+	closeErr error
+}
+
+func (oc *onceCloseListener) Close() error {
+	oc.once.Do(func() { oc.closeErr = oc.Listener.Close() })
+	return oc.closeErr
 }
 
 // serverHandler delegates to either the server's Handler or DefaultServeMux.
@@ -783,7 +867,7 @@ func (srv *Server) ListenAndServeTLS(certFile, keyFile string) error {
 		if err != nil {
 			return err
 		}
-	}	
+	}
 	conn, err := Listen(network, addr)
 	if err != nil {
 		return err
