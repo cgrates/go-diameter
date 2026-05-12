@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fiorix/go-diameter/v4/diam"
+	"github.com/cgrates/go-diameter/diam"
 )
 
 // TestServerOnNewConnection verifies that Server.OnNewConnection fires once
