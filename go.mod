@@ -6,11 +6,7 @@ require (
 	github.com/golang/glog v1.2.5
 	github.com/golang/protobuf v1.5.4
 	github.com/ishidawataru/sctp v0.0.0-20251114114122-19ddcbc6aae2
-<<<<<<< HEAD
-	google.golang.org/grpc v1.81.0
-=======
 	google.golang.org/grpc v1.79.3
->>>>>>> ff9f7a9 (Update google.golang.org/grpc to v1.79.3 (critical CVE fix))
 )
 
 require (

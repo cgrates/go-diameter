@@ -13,7 +13,6 @@ and a stack for the [Go programming language](https://go.dev/).
 ### Deviations from fiorix/go-diameter
 
 - Modify PrepareSupportedApps to ignore specified applications
-- Revise FindAVPWithVendor to stop looping endlessly
 
 ### Status
 
@@ -51,26 +50,9 @@ See the API documentation at https://pkg.go.dev/github.com/cgrates/go-diameter
 
 The easiest way to get started is by trying out the client and server example programs.
 
-<<<<<<< HEAD
-With Go 1.11 and newer (preferred), you can start the client and server already:
-
 ```
-export GO111MODULE=on
-go run github.com/cgrates/go-diameter/examples/server
-go run github.com/cgrates/go-diameter/examples/client -hello
-```
-
-Without modules, use standard procedure:
-
-```
-go get github.com/cgrates/go-diameter/examples/...
-go run github.com/cgrates/go-diameter/examples/server
-go run github.com/cgrates/go-diameter/examples/client -hello
-=======
-```
-go run github.com/fiorix/go-diameter/v4/examples/server@latest
-go run github.com/fiorix/go-diameter/v4/examples/client@latest -hello
->>>>>>> def1726 (Prepare v4.1.0 release)
+go run github.com/cgrates/go-diameter/examples/server@latest
+go run github.com/cgrates/go-diameter/examples/client@latest -hello
 ```
 
 See the other programs under `examples/` and the package test files for

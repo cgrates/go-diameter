@@ -86,23 +86,21 @@ func (p *Parser) FindAVPWithVendor(appid uint32, code interface{}, vendorID uint
 		err error
 	)
 	origAppID := appid
-	triedBase := (appid == 0) // Track if we've already tried base dictionary
-
 retry:
 	switch codeVal := code.(type) {
 	case string:
 		avp, ok = p.avpname[nameIdx{appid, codeVal, vendorID}]
-		if !ok && triedBase {
+		if !ok && appid == 0 {
 			err = fmt.Errorf("Could not find AVP %T(%q) for Vendor: %d", codeVal, codeVal, vendorID)
 		}
 	case uint32:
 		avp, ok = p.avpcode[codeIdx{appid, codeVal, vendorID}]
-		if !ok && triedBase {
+		if !ok && appid == 0 {
 			err = fmt.Errorf("Could not find AVP %T(%d) for Vendor: %d", codeVal, codeVal, vendorID)
 		}
 	case int:
 		avp, ok = p.avpcode[codeIdx{appid, uint32(codeVal), vendorID}]
-		if !ok && triedBase {
+		if !ok && appid == 0 {
 			err = fmt.Errorf("Could not find AVP %T(%d) for Vendor: %d", codeVal, codeVal, vendorID)
 		}
 	default:
@@ -110,18 +108,14 @@ retry:
 	}
 	if ok {
 		return avp, nil
-	}
-
-	// Not found - try fallback dictionaries
-	if !triedBase && appid != 0 {
+	} else if appid != 0 {
 		parentAppId, isScoppedApp := parentAppIds[appid]
 		if isScoppedApp {
 			// Try searching 'parent' dictionary
 			appid = parentAppId
 		} else {
-			// Try searching the base dictionary
+			// Try searching the base dictionary.
 			appid = 0
-			triedBase = true
 		}
 		goto retry
 	} else {
